@@ -176,7 +176,12 @@ async function handleAction(bot, chatId, session, statusMessageId, action) {
 }
 
 function createBot(token, apiRoot) {
-  const botOptions = { polling: true };
+  const botOptions = {
+    polling: true,
+    request: {
+      agentOptions: { family: 4 }, // avoids IPv6 connection failures on some hosts
+    },
+  };
   if (apiRoot) {
     botOptions.baseApiUrl = apiRoot;
   }

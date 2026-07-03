@@ -1,14 +1,24 @@
-# Optional: self-hosted Telegram Bot API server.
-# Raises file download limit from 20MB (official cloud API) to 2000MB (2GB).
+# Combined stack: Local Telegram Bot API server + the bot app itself.
+# Both services share one Docker network, so the app can reach the API
+# server by its SERVICE NAME (telegram-bot-api), not "localhost".
+# This is what actually removes the 20MB limit and enables up to 2000MB (2GB).
 #
 # Setup:
 # 1. Get api_id and api_hash from https://my.telegram.org (API Development Tools)
-# 2. Create a .env.docker file with:
+# 2. Create a .env file in this folder (see .env.example) with:
+#      BOT_TOKEN=your_bot_token
 #      TELEGRAM_API_ID=your_api_id
 #      TELEGRAM_API_HASH=your_api_hash
-# 3. Run: docker compose up -d
-# 4. In your bot's .env, set:
-#      TELEGRAM_API_ROOT=http://localhost:8081
+#      TELEGRAM_API_ROOT=http://telegram-bot-api:8081
+# 3. Run: docker compose up -d --build
+# 4. Check logs: docker compose logs -f app
+#
+# Deploy this stack on any host that runs docker-compose: a VPS
+# (DigitalOcean/Hetzner/Contabo droplet, ~$5/mo) is the simplest and most
+# reliable option, since it guarantees both containers share one private
+# network. Plain Render/Railway "web service" deploys do NOT support this
+# -- each service there gets its own isolated container with no shared
+# localhost, which is exactly what caused the original EFATAL error.
 
 version: "3.8"
 
@@ -16,13 +26,32 @@ services:
   telegram-bot-api:
     image: aiogram/telegram-bot-api:latest
     restart: unless-stopped
-    env_file:
-      - .env.docker
-    ports:
-      - "8081:8081"
+    environment:
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
     volumes:
       - ./bot-api-data:/var/lib/telegram-bot-api
     command: >
       --local
       --api-id=${TELEGRAM_API_ID}
       --api-hash=${TELEGRAM_API_HASH}
+    networks:
+      - botnet
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - telegram-bot-api
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      PORT: 3000
+      TELEGRAM_API_ROOT: http://telegram-bot-api:8081
+    ports:
+      - "3000:3000"
+    networks:
+      - botnet
+
+networks:
+  botnet:
+    driver: bridge
